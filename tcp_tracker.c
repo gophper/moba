@@ -372,6 +372,15 @@ int tracepoint__sock__inet_sock_set_state(struct trace_event_raw_inet_sock_set_s
     __u16 sport = ctx->sport;
     __u16 dport = ctx->dport;
     
+    /* Fallback: If sport is 0, read directly from socket structure.
+     * This can happen during early connection phases like SYN_SENT where
+     * the tracepoint context may not have the source port populated yet.
+     */
+    if (sport == 0) {
+        struct sock *sk = (struct sock *)ctx->skaddr;
+        bpf_core_read(&sport, sizeof(sport), &sk->__sk_common.skc_num);
+    }
+    
     /* Build key structure */
     struct ipv4_key_t key = {};
     key.pid = pid;

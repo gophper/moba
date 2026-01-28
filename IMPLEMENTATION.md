@@ -17,7 +17,23 @@ The original code had several issues:
 
 **Solution**: Removed the function entirely as it wasn't essential for the core functionality. The function was only used for debug printing and wasn't critical for the connection tracking logic.
 
-### 2. Implemented State-Based Connection Tracking
+### 2. Fixed Source Port Being 0 in SYN_SENT Phase
+
+**Issue**: During the SYN_SENT phase, the source port (sport) was showing as 0 in the tracepoint context.
+
+**Root Cause**: The `inet_sock_set_state` tracepoint's `ctx->sport` field may not be populated during early connection phases like SYN_SENT. This happens because the tracepoint is triggered before the socket structure is fully initialized with all port information.
+
+**Solution**: Implemented a fallback mechanism that reads the source port directly from the socket structure when `ctx->sport` is 0:
+```c
+if (sport == 0) {
+    struct sock *sk = (struct sock *)ctx->skaddr;
+    bpf_core_read(&sport, sizeof(sport), &sk->__sk_common.skc_num);
+}
+```
+
+The socket's `skc_num` field contains the source port in host byte order and is always populated even during early connection phases.
+
+### 3. Implemented State-Based Connection Tracking
 
 **Previous approach**: Used `sys_enter_connect` and `sys_exit_connect` syscall tracepoints.
 
@@ -27,7 +43,7 @@ The original code had several issues:
 - More accurate timing and state information
 - Independence from syscall variations
 
-### 3. Comprehensive State Transition Coverage
+### 4. Comprehensive State Transition Coverage
 
 #### Client-Side Transitions:
 - **CLOSE → SYN_SENT**: Connection attempt started
@@ -51,7 +67,7 @@ The original code had several issues:
   - Increments failure counter
   - Cleans up tracking state
 
-### 4. Kernel Process Filtering
+### 5. Kernel Process Filtering
 
 Implemented `is_kernel_pid()` function that filters out:
 - **PID 0**: The idle/swapper process (kernel)
@@ -59,7 +75,7 @@ Implemented `is_kernel_pid()` function that filters out:
 
 This prevents tracking of kernel-internal network operations that would skew statistics.
 
-### 5. Data Structures
+### 6. Data Structures
 
 #### Maps:
 - `sock_start_map`: Tracks connection start time by socket address (replaces pid_tgid-based tracking)
@@ -72,7 +88,7 @@ This prevents tracking of kernel-internal network operations that would skew sta
 - `conn_start_map` (pid_tgid-based): Replaced with socket-address-based tracking
 - `pending_connects`: Not needed in state-based approach
 
-### 6. Additional Features Preserved
+### 7. Additional Features Preserved
 
 - TCP/UDP sendmsg/recvmsg tracking via kprobes
 - Namespace isolation (network and PID namespaces)
