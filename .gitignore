@@ -1,0 +1,14 @@
+# BPF build artifacts
+*.bpf.o
+*.o
+vmlinux.h
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Test artifacts
+*.log
